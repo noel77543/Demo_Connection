@@ -1,19 +1,27 @@
 package com.noel.sung.tw.demo_connection.connect;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.Nullable;
+import android.support.annotation.StringDef;
 import android.util.Log;
+
+import com.noel.sung.tw.demo_connection.implement.OnConnectListener;
+import com.noel.sung.tw.demo_connection.implement.OnSavedInInternalStorageListener;
 
 import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
@@ -27,13 +35,28 @@ import java.util.TimerTask;
  */
 
 public class MyConnect {
-    private OnConnectListener onConnectListener;
-    private static final String TAG = MyConnect.class.getSimpleName();
-    private HttpURLConnection httpURLConnection;
-    private final int TIME_OUT = 15 * 1000;
+
+    private final String TAG = MyConnect.class.getSimpleName();
+    private final String RETRY_TIME = "retry:";
 
     public static final String CONNECT_TYPE_GET = "GET";
     public static final String CONNECT_TYPE_POST = "POST";
+
+    @StringDef({CONNECT_TYPE_GET, CONNECT_TYPE_POST})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface ConnectType {
+
+    }
+
+    private @ConnectType
+    String requestMethod = CONNECT_TYPE_GET;
+
+
+    private OnConnectListener onConnectListener;
+    private OnSavedInInternalStorageListener onSavedInInternalStorageListener;
+
+    private HttpURLConnection httpURLConnection;
+    private final int TIME_OUT = 15 * 1000;
 
     private final String NULL_REQUEST = "null";
 
@@ -41,20 +64,99 @@ public class MyConnect {
     private Thread connectThread;
     private Timer timer;
     private boolean isTimeOut;
-    private final String RETRY_TIME = "retry:";
     private int retryTime = 1;
     private int MAX_RETRY_TIME = 5;
+    private int BUFFER_SIZE = 1024;
 
-
-    private String requestMethod;
     private String urlString;
     private Map<String, String> data;
+
+    private Context context;
+
+    //-----------
+    public MyConnect(Context context) {
+        this.context = context;
+    }
+
+    //-----------
+
+    /***
+     * 下載 並 存入內部資料夾
+     * @param urlString 載點
+     * @param fileName 欲存在內部資料夾中的檔案名稱（須包含副檔名）
+     */
+    public void downloadFileToInternalStorage(final String urlString, final String fileName) {
+        connectThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL url = new URL(urlString);
+                    HttpURLConnection httpConn = (HttpURLConnection) url.openConnection();
+                    int responseCode = httpConn.getResponseCode();
+
+                    
+
+                    //response code 正確的話
+                    //取得串流 並 存入內部資料夾
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+
+                        /**
+                         *  Log內部資料夾的路徑
+                         *  Log.e("a", context.getFilesDir().getAbsolutePath());
+                         *
+                         *  Log內部資料夾的項目總數
+                         *  Log.e("a", context.fileList().length + "");
+                         *  Log將他們的名稱一個一個印出來
+                         *  for (int i = 0; i < context.fileList().length; i++) {
+                         *  Log.e("packageName", context.fileList()[i]);
+                         *  }
+                         * */
+
+
+                        /***
+                         *  用來Log此內部路徑中所有檔案名稱
+                         *  File[] fileList = new File(context.getFilesDir().getAbsolutePath(), packageName).listFiles();
+                         *  CharSequence[] list = new CharSequence[fileList.length];
+                         *  for (int i = 0; i < list.length; i++) {
+                         *  list[i] = fileList[i].getName();
+                         *  Log.e(i + "=", list[i].toString());
+                         *  }
+                         */
+
+
+                        InputStream inputStream = httpConn.getInputStream();
+
+                        File internalFile = new File(context.getFilesDir().getAbsolutePath(), fileName);
+                        FileWriter writer = new FileWriter(internalFile);
+                        writer.append(convertStreamToString(new InputStreamReader(inputStream, "UTF-8")));
+                        if (onSavedInInternalStorageListener != null) {
+                            onSavedInInternalStorageListener.onSuccessSaved(responseCode, internalFile.getAbsolutePath(), fileName);
+                        }
+                        writer.flush();
+                        writer.close();
+                        inputStream.close();
+                    }
+                    //當無法下載
+                    else {
+                        if (onSavedInInternalStorageListener != null) {
+                            onSavedInInternalStorageListener.onFailSaved(responseCode);
+                        }
+                    }
+                } catch (MalformedURLException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        connectThread.start();
+    }
+
 
     //---------------------------------------------------------------------------
 
     /***
      * 發起連線
-     * @param requestMethod 連線方式
      * @param urlString  url
      * @param data  傳的參數 HashMap<String,String>
      */
@@ -66,7 +168,7 @@ public class MyConnect {
         connectThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                String response = NULL_REQUEST;
+                String response;
                 String newUrlString = urlString;
 
                 try {
@@ -87,8 +189,9 @@ public class MyConnect {
                     // 設定開啟自動轉址用以處理https問題
                     httpURLConnection.setInstanceFollowRedirects(true);
 
-                    httpURLConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                    httpURLConnection.setRequestProperty("Accept", "application/json");
+//                    httpURLConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+//                    httpURLConnection.setRequestProperty("Accept", "application/json");
+
                     if (requestMethod.equals(CONNECT_TYPE_POST) && data != null) {
                         OutputStream outputStream = httpURLConnection.getOutputStream();
                         DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
@@ -104,10 +207,9 @@ public class MyConnect {
                     inputStream.close();
 
 
-
                     if (onConnectListener != null && !response.equals(NULL_REQUEST)) {
                         httpURLConnection.disconnect();
-                        onConnectListener.onSuccessConnect(response,httpURLConnection.getResponseCode());
+                        onConnectListener.onSuccessConnect(response, httpURLConnection.getResponseCode());
                         return;
                     }
                     //沒有回傳的話設下計時器 等時間到再次發起連線直到累積次數達到MAX_RETRY_TIME
@@ -233,7 +335,7 @@ public class MyConnect {
      * @return
      */
     private String convertStreamToString(InputStreamReader inputStreamReader) {
-        BufferedReader reader = new BufferedReader(inputStreamReader);
+        BufferedReader reader = new BufferedReader(inputStreamReader, BUFFER_SIZE);
         StringBuilder sb = new StringBuilder();
 
         String line;
@@ -254,14 +356,23 @@ public class MyConnect {
         return sb.toString();
     }
 
-    //-----
-    public interface OnConnectListener {
-        void onSuccessConnect(String response,int responseCode);
+    //------------
 
-        void onFailedConnect();
-    }
-
+    /***
+     *  當連線post or get 完成的接口
+     * @param onConnectListener
+     */
     public void setOnConnectListener(OnConnectListener onConnectListener) {
         this.onConnectListener = onConnectListener;
     }
+    //------------
+
+    /***
+     *
+     */
+    public void setOnSavedInInternalStorageListener(OnSavedInInternalStorageListener onSavedInInternalStorageListener) {
+        this.onSavedInInternalStorageListener = onSavedInInternalStorageListener;
+    }
+
+
 }

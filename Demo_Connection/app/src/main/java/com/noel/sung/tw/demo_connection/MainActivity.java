@@ -1,6 +1,5 @@
 package com.noel.sung.tw.demo_connection;
 
-import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -25,8 +24,6 @@ public class MainActivity extends AppCompatActivity implements OnSavedInInternal
 //        private String url = "http://app.creatidea.com.tw/TaoyuanAgricultureExpo/Api/Scratch/AddMember";
     //url 2  ＧＥＴ
 //    private String url = "http://data.ntpc.gov.tw/od/data/api/18621BF3-6B00-4A07-B49C-0C5CCABFE026";
-
-
     //url 3 download
     private String url = "https://ciappdownload.azurewebsites.net/APP/illegalDrug/android/commodity.csv";
 
@@ -48,10 +45,18 @@ public class MainActivity extends AppCompatActivity implements OnSavedInInternal
 
 
         myConnect = new MyConnect(this);
-//        myConnect.setOnConnectListener(this);
+
+        //connect 1
 //        myConnect.connect(MyConnect.CONNECT_TYPE_POST, url, data);
+//        myConnect.setOnConnectListener(this);
 
 
+        //connect 2
+//        myConnect.connect(MyConnect.CONNECT_TYPE_GET, url, data);
+//        myConnect.setOnConnectListener(this);
+
+
+        //connect 3
         myConnect.downloadFileToInternalStorage(url, "commodity.csv");
         myConnect.setOnSavedInInternalStorageListener(this);
     }

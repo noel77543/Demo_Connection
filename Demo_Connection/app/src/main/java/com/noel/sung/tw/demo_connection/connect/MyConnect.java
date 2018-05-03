@@ -94,7 +94,7 @@ public class MyConnect {
                     HttpURLConnection httpConn = (HttpURLConnection) url.openConnection();
                     int responseCode = httpConn.getResponseCode();
 
-                    
+
 
                     //response code 正確的話
                     //取得串流 並 存入內部資料夾
